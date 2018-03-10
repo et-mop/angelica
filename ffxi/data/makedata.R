@@ -45,3 +45,6 @@ HQProb$skillDiff <- factor(HQProb$skillDiff,
                            levels = HQProb$skillDiff)
 saveRDS(HQProb, file=paste(getwd(), "ffxi/data/HQProb.rds", sep = '/'))
 
+
+
+#
