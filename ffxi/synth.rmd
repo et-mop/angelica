@@ -31,13 +31,13 @@ Note that the `echo = FALSE` parameter was added to the code chunk to prevent pr
 
 ```{r maketable, echo=FALSE}
 
-SkilName <- data.frame(1:12, "jn"={"素","見習"})
+SkilName <- data.frame(1:12, "jn"=c("素","見習"))
 SkilName
 
-JSkilName <- {
+JSkilName <- c(
   "素人" ,"見習","徒弟", "下級職人", "名取", "目録", "印加", "高弟", "皆伝", "師範",
   "高級職人", "高級職人＋"
-}
+)
 
 ```
 

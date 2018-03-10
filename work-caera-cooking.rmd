@@ -1,0 +1,81 @@
+---
+title: "合成-調理"
+author: "Eiichi Tsuji"
+date: "2018年3月10日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(dplyr)
+require(ggplot2)
+require(readxl)
+
+
+```
+
+##合成の作業まとめ
+
+FFXIの合成について、シミュレーションをやりたいということでまとめてみる。
+
+オブジェクトをいくつか読み込む。
+
+
+
+```{r}
+cae_cook <- read_excel("ffxi/data/2018-03-09_FFXISynth.xlsx", sheet = "Cooking")
+
+```
+
+```{r}
+
+getGapRange <- function(gp){
+  ifelse(gp < -27, 1, 
+         ifelse(gp >=-27 & gp < -10, 2, 
+            ifelse(gp >= -10 & gp < -5, 3, 
+              ifelse(gp >= -5 & gp < -3, 4,
+                ifelse(gp >= -3 & gp < -2, 5,
+                  ifelse(gp >= -2 & gp < 0, 6, 
+                    ifelse(gp ==0, 7, 
+                      ifelse(gp >0 & gp < 11, 8,
+                        ifelse(gp >= 11 & gp < 31, 9, 
+                          ifelse(gp >= 31 & gp < 51, 10, 11))))))))))
+}
+
+```
+
+```{r, include=FALSE}
+ttt <-
+cae_cook %>%
+    rename(count='回数', result='成功', skill.up='アップ', skill.disp='スキル表示',
+           lost='ロスト', rank='階級', target='合成物', skill.cap='スキルキャップ',
+           support='サポート') %>%
+  filter(., is.na(support)) %>%
+  select(-lost, -rank, -support) %>%
+  mutate(gr = as.factor(getGapRange(Gap)))
+```
+
+```{r }
+
+ttt %>%
+  group_by(gr) %>%
+  summarise(cnt=sum(result), count=n()) %>%
+  rename(gap.rank=gr, success=cnt, try=count) %>%
+  mutate(pct=success / try)
+```
+
+
+確率のやつは、テーブルを3枚位用意すればいいのかな？
+
+スキルアップの確率のほうが、いろいろと面白そう
+
+```{r}
+
+skill.up.string <- function(val){
+  ifelse(is.na(val), 'NU', ifelse(val==0.1, 'SU', ifelse(val==0.2, 'DU', NA)))
+}
+
+skill.up.string(ttt$skill.up)
+
+```
