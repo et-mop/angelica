@@ -1,0 +1,15 @@
+---
+title: "Memo"
+author: "Eiichi Tsuji"
+date: "2018年3月9日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+メモ
+
+RStudioをアップデートすると、ライブラリも再読込か。
+
