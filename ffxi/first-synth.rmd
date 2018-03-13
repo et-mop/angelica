@@ -1,0 +1,249 @@
+---
+title: "FFXI Synthetic"
+author: "Eiichi Tsuji"
+date: "2018年3月12日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(ggplot2)
+```
+
+## 合成を考える
+
+最初に、データを読み込む。
+とりあえずは、固定しておこう。
+
+```{r }
+bd <- getwd()
+#Cooking data of caerae
+ckg <- readRDS(paste(bd, "data/caec.rds", sep='/'))
+#Leathercraft data of caera
+lth <- readRDS(paste(bd, "data/cael.rds", sep='/'))
+#Leatthercraft data of Primasynth
+plh <- readRDS(paste(bd, "data/pril.rds", sep='/'))
+#Clothcraft data of Primasynth
+plc <- readRDS(paste(bd, "data/pric.rds", sep='/'))
+
+
+```
+
+## レンジを考える
+
+合成は、合成に成功をしたりしたときに、スキルアップして、0.2上がった、2になった
+というような表示がでる。
+
+合成を行ったときには、その前のスキルのハズ。
+
+したがって、データのスキル表示を一つ下にずらす必要があると思われる。
+
+これは、テーブごとにやらないと面倒か
+
+```{r}
+
+ckg$tskill <- c(ckg$skill[1], ckg$skill)[-(length(ckg$skill))]
+lth$tskill <- c(lth$skill[1], lth$skill)[-(length(lth$skill))]
+plh$tskill <- c(plh$skill[1], plh$skill)[-(length(plh$skill))]
+plc$tskill <- c(plc$skill[1], plc$skill)[-(length(plc$skill))]
+
+
+
+#合成データを全部いれたやつ
+synth.table <- rbind(ckg, lth, plh, plc)
+
+#スキルギャップを計算し直し
+
+
+synth.table$skill.gap <- synth.table$tskill - synth.table$target.cap
+
+```
+
+## 合成の成功率をスキルギャップでみる
+
+まずは、スキルギャップをfloorで分けて表示
+```{r}
+
+synth.table %>%
+  mutate(sr=floor(skill.gap)) %>%
+  group_by(sr) %>%
+  summarise(success=sum(result), try=n()) %>%
+  mutate(prb=round(success/try, 3))
+
+```
+
+srをfactorにしてグラフを書いてみよう
+
+```{r}
+synth.table %>%
+  mutate(sr=floor(skill.gap)) %>%
+  ggplot(aes(x=sr, fill=as.factor(result))) +
+  geom_bar() +
+  labs(
+    x="Skill Gap",
+    y="Synth Count",
+    fill="result",
+    title="合成結果一覧"
+  )
+```
+```{r}
+synth.table %>%
+  mutate(sr=floor(skill.gap)) %>%
+  group_by(sr) %>%
+  summarise(success=sum(result), try=n()) %>%
+  mutate(prb=round(success/try, 3)) %>%
+  ggplot(aes(x=sr,y=prb)) +
+  geom_bar(stat="identity", fill="cyan4")
+```
+
+
+
+ここで、まずは合成成功率を分けるために、スキルギャップをランク分けする関数をつくる。
+
+-27より小さい（合成をしようという対象のスキルキャップから、自分の現在のスキルを引いたあたい。
+つまり、全然足りない場合は、座れない）
+
+disable
+
+-10から-27の範囲だと、もしかすると成功するかもというレベル
+
+oneChance
+
+-5から-10だと、結構失敗する
+
+difficult
+
+-3から-5だと、それなりに失敗する
+
+risky
+
+-2から-3だと、かなり成功する
+
+challenge
+
+-2以上だと、成功率はキャップとしてみる
+
+cap
+
+
+こいつを分ける関数をつくっておく
+
+synthProb
+
+で、ラベルをfactorで　pr.label
+
+```{r}
+
+synthProb <- function(gap){
+  
+  ifelse(gap < -27, 1,
+    ifelse(gap >=-27 & gap < -10, 2,
+      ifelse(gap >= -10 & gap < -5, 3, 
+        ifelse(gap >= -5 & gap < -3, 4,
+          ifelse(gap >= -3 & gap < -2, 5, 6)))))
+}
+
+pr.label <- factor(c("disable", "oneChance", "difficult", "risky", "challenge", "cap"),
+                   levels = c("disable", "oneChance", "difficult", "risky", "challenge", "cap"))
+
+```
+
+
+全部のデータに関して、想定される確率の階級で分けてみると。
+
+```{r}
+synth.table %>%
+  mutate(prob.range=pr.label[synthProb(skill.gap)]) %>%
+  select(-lost, -target, -player, -Synth) %>%
+  group_by(prob.range) %>%
+  summarise(success=sum(result), try=n()) %>%
+  mutate(prob=round(success/try, 3))
+```
+
+となる。challengeの階級は、幅が狭いのと、スキルアップが速いので、
+サンプル数を稼ぐのは難しいか。
+
+
+
+スキルを整数値でみて、それぞれの成功確率を考えてみる。
+
+```{r}
+
+skt <-
+synth.table %>%
+  group_by(gap=floor(skill.gap)) %>%
+  summarise(success=sum(result), try=n()) %>%
+  mutate(prob=round(success/try,3))
+
+skt
+
+```
+
+```{r}
+
+ggplot(skt, aes(x=as.factor(gap),y=prob)) + 
+  geom_point() +
+  labs(
+    y="成功確率",
+    x="スキルギャップ",
+    title="合成成功確率"
+  )
+
+```
+
+スキルアップに関して
+
+
+```{r}
+
+suf <- function(v){
+  ifelse(is.na(v), 'N', ifelse(v==0.1, 'S', 'D'))
+}
+
+
+synth.table %>%
+  group_by(gap=floor(skill.gap), skill.up) %>%
+  summarise(count=n()) %>%
+  mutate(su=suf(skill.up)) %>%
+  mutate(su=factor(su, levels=c("N", "D", "S"))) %>%
+  ggplot(aes(x=gap,y=count, fill=su)) +
+  geom_bar(stat="identity", position = "fill")
+```
+
+
+```{r}
+
+
+synth.table %>%
+  group_by(gap=floor(skill.gap), skill.up) %>%
+  summarise(count=n()) %>%
+  mutate(su=suf(skill.up)) %>%
+  mutate(su=factor(su, levels=c("N", "D", "S"))) %>%
+  ggplot(aes(x=gap,y=count, fill=su)) +
+  geom_bar(stat="identity")
+```
+
+
+```{r}
+synth.table %>%
+  group_by(gap=floor(skill.gap), skill.up) %>%
+  filter(result==1) %>%
+  summarise(count=n()) %>%
+  mutate(su=suf(skill.up)) %>%
+  mutate(su=factor(su, levels=c("N", "D", "S"))) %>%
+  ggplot(aes(x=gap,y=count, fill=su)) +
+  geom_bar(stat="identity", position = "fill")
+```
+
+```{r}
+synth.table %>%
+  group_by(gap=floor(skill.gap), skill.up) %>%
+  filter(result==0) %>%
+  summarise(count=n()) %>%
+  mutate(su=suf(skill.up)) %>%
+  mutate(su=factor(su, levels=c("N", "D", "S"))) %>%
+  ggplot(aes(x=gap,y=count, fill=su)) +
+  geom_bar(stat="identity", position = "fill")
+```
