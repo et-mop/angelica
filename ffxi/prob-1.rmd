@@ -1,0 +1,149 @@
+---
+title: "推定すること"
+author: "Eiichi Tsuji"
+date: "2018年3月14日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+bd <- getwd()
+
+synth.table <- readRDS(paste(bd, "data/synthTable.rds", sep="/"))
+mc256 <- readRDS(paste(bd, "data/mc256.rds", sep="/"))
+mc256.2 <- readRDS(paste(bd, "data/mc256-2.rds", sep="/"))
+mc256.3 <- readRDS(paste(bd, "data/mc256-3.rds", sep="/"))
+
+mg <- 2
+
+ttc <- synth.table %>%
+  filter(skill.gap >= mg) %>%
+  summarise(suc=sum(result), trc=n())
+
+```
+
+## 推定すること
+
+合成データから、スキルキャップの下限を`r mg`として成功確率を計算してみる。
+合成を行った回数は`r ttc[2]`回、そのうち`r ttc[1]`回の合成に成功している。
+
+合成の成否は、成功確率をpとするベルヌイ過程であるとして、その成功確率を推定すると、
+推定値はベータ分布となる。
+
+```{r, echo=FALSE}
+t.a <- 710
+t.b <- 763 - 710
+t.mean <- t.a / (t.a + t.b)
+
+ggplot(data.frame(x=c(0.85, 1)), aes(x=x)) +
+  stat_function(
+    fun=dbeta,
+    args=list(
+      shape1=t.a,
+      shape2=t.b
+    ),
+    color="blue"
+  ) +
+  labs(
+    y="density",
+    x="p"
+  ) +
+  geom_vline(xintercept = t.mean, linetype="dashed") +
+  annotate("text", x=0.94,y=10, label=round(t.mean, 3)) +
+  geom_vline(xintercept = 238/256) +
+  geom_vline(xintercept = 237/256) +
+  geom_vline(xintercept = 239/256)
+```
+
+## 256分率としてのシミュレーション
+
+```{r}
+data.frame(id=1:(nrow(mc256)-1001), "sv"=mc256[-(1:1001)]) %>%
+  mutate(prob=sv/256) %>%
+  ggplot(aes(x=sv)) +
+  geom_histogram(binwidth = 1,fill="cyan4", color="white") +
+  xlim(215, 256)
+```
+
+```{r}
+mcdf <- as.data.frame(table(mc256[-(1:1001)]))
+names(mcdf) <- c("num", "count")
+
+mcdf %>%
+  mutate(num=as.numeric(as.character(num))) %>%
+  mutate(xprob=num/256,yprob=count/50000) %>%
+  ggplot(aes(x=xprob,y=yprob)) +
+  geom_bar(stat="identity", fill="cyan4") +
+  xlim(0.85, 1)
+```
+
+```{r}
+mcdf2 <- as.data.frame(table(mc256.2[-(1:1001)]))
+names(mcdf2) <- c("num", "count")
+
+mcdf2 %>%
+  mutate(num=as.numeric(as.character(num))) %>%
+  mutate(xprob=num/256, yprob=count/50000)%>%
+  filter(xprob >=0.85) %>%
+  ggplot(aes(x=xprob,y=yprob)) +
+  geom_bar(stat="identity", fill="cyan4")
+```
+
+```{r}
+mcdf3 <- as.data.frame(table(mc256.3[-(1:1001)]))
+names(mcdf3) <- c("num", "count")
+
+mcdf3 %>%
+  mutate(num=as.numeric(as.character(num))) %>%
+  mutate(xprob=num/256, yprob=count/50000)%>%
+  filter(xprob >=0.85) %>%
+  ggplot(aes(x=xprob,y=yprob)) +
+  geom_bar(stat="identity", fill="cyan4")
+```
+
+
+## 
+ここで、計算をしてみよう
+
+```{r}
+tbl <- 
+synth.table %>%
+  mutate(sr=floor(skill.gap)) %>%
+  group_by(sr) %>%
+  summarise(success=sum(result), false=n() - success) 
+
+smmm <- function(n){
+  ret <- list()
+  ret$n <-n
+  ret$r <- as.numeric(tbl[n,1])
+  sm <- smryMyMC(calcMyMC(as.numeric(tbl[n,2]), as.numeric(tbl[n,3]), mc=50000, burn = 1000),
+         burn = 1000)
+  ret$mean <- sm$mean
+  ret$median <- sm$median
+  ret$HDI_L <- sm$HDI[1]
+  ret$HDI_U <- sm$HDI[2]
+  ret
+}
+
+resList <- sapply(1:nrow(tbl), smmm)
+
+sucProb <- 
+data.frame("n"=unlist(resList[1,]),
+           "sr"=unlist(resList[2,]),
+           "mean"=unlist(resList[3,]),
+           "median"=unlist(resList[4,]),
+           "lower"=unlist(resList[5,]),
+           "upper"=unlist(resList[6,]))
+
+sucProb %>%
+  ggplot(aes(x=sr, y= median)) +
+  geom_point(size=3) +
+  geom_point(shape=2, aes(x=sr,y=mean)) +
+  geom_errorbar(aes(ymin=lower, ymax=upper))
+
+```

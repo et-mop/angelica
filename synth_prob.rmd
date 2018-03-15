@@ -1,0 +1,205 @@
+---
+title: "合成確率検討"
+author: "Eiichi Tsuji"
+date: "2018年3月14日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+bd <- getwd()
+
+synth.table <- readRDS(paste(bd, "ffxi/data/synthTable.rds", sep="/"))
+
+```
+
+## 合成確率を検討する
+
+### データのとり方
+
+とにかく、合成をして結果をメモ。この一連のデータでは、食事、イオニス、装備など、
+サポート要素は一切用いていない。
+
+データ数は`r nrow(synth.table)`回の合成データを含んでいる。
+
+合成のデータは、低レベルの合成が主。ほとんどのデータは「素人」れべる。
+
+
+### いくつかの用語
+
+Skill Gap: 自分の合成スキル値と、合成を行う物の差。例えば、合成のレベルが3.2の職人が、
+スキルキャップ10の製品を合成しようとするときには、3.2-10=-6.8をSkill Gapと呼ぶ。
+skill: 合成後に、スキルアップの表示がでたときの画面表示。つまり、合成自体は、このskill表示より一段階低いスキルで行われている。つまり、「0.1上がった。スキルが3になった」と表示が出た合成では、職人のスキルは2.9であったことが後から確認できる（連続で合成を行っていれば、把握できているときが多いが）。
+tskill: 上記skillに書いてある事情から計算した、合成を行う時点での職人のスキル
+target.cap:　合成行う製品のスキルキャップ。
+
+#### 例
+あるキャラクタの裁縫の合成に関してグラフで示してみる。
+まずは、合成の回数を横軸に、縦軸にプレーヤーのスキルをプロットする。
+
+```{r, echo=FALSE}
+
+prcd <-
+synth.table %>%
+  select(-lost, -rank, -target) %>%
+  filter(player=="Primsynth", Synth=="Clothcraft") %>%
+  select(-player, -Synth)
+
+prcd %>%
+  ggplot(aes(x=count,y=tskill)) +
+  geom_line() +
+  labs(
+    x="合成回数",
+    y="合成スキル",
+    title="合成回数と合成スキルの変化"
+  )
+```
+
+このグラフでは、同じものを合成し続けているわけではない。それぞれの合成で、どのスキルキャップの合成を行っているのかの時系列変化を表示すると
+
+```{r, echo=FALSE}
+prcd %>%
+  ggplot(aes(x=count,y=tskill, color=as.factor(floor(target.cap)))) +
+  geom_point(size = 3) +
+  labs(
+    x="合成回数",
+    y="合成スキル",
+    color="合成物のスキルキャアップ",
+    title="合成回数と合成スキルの変化"
+  )
+```
+```{r}
+prcd %>%
+  ggplot(aes(x=count,y=tskill, color=as.factor(floor(result)))) +
+  geom_point(size = 3) +
+  labs(
+    x="合成回数",
+    y="合成スキル",
+    color="合成成否"
+  )
+```
+
+## スキルギャップと成功率
+
+これまでは、いわゆる時系列で見てきた。この味方だと、合成ごとに対象は異なるし、
+合成を行うと、スキルは変化するしで、なかなか「確率」を推定するとかがやりにくい。
+
+FFXIの合成などでは、いろいろ検討されていて、その仕組は結構わかっているようだ。
+
+
+そこで、まずこれらの知見を鑑みながら、このデータを分析して確率の値を推定していきたい。
+
+合成の成功率は、スキルギャップと「関連」している。
+
+そこで、合成の成否をスキルギャップの値で分類してみるとどうなるか？
+
+ここからは、`r nrow(synth.table)`回の合成データ全てに対して分析を行っていく。
+
+
+スキルギャップは、自分のスキルと合成対象物のスキルキャップの差とう定義なので、
+小数点以下1桁の数値となるが、成功率を考えるときなどは、ある範囲-10.1から-9.0までの間。。のようなものを考え、この範囲での合成の成否をカウントとするのが良さそうである。
+
+スキルギャップを整数で丸めたものをskill.rankと呼ぶことにする。
+
+```{r}
+
+synth.table %>%
+  group_by(skill.rank=floor(skill.gap)) %>%
+  summarise(tryal=n()) %>%
+  ggplot(aes(y=tryal,x=skill.rank)) +
+  geom_bar(stat="identity", fill="cyan4") +
+  labs(
+    title="スキルランク別の合成回数",
+    y="tryal(合成回数)"
+  )
+
+```
+
+### スキルキャプのまるめ確認
+
+ここで、確認
+
+skill.rankが0の棒には、スキルギャップが0.0から0.9の間で行った合成の回数が含まれている。
+これは、自分のスキルが10.3でスキルキャプが10のキットを合成したとかの場合である。
+
+自分のスキルが10.0のときには0に含まれる。
+
+また、自分のスキルが足りないとき、スキルギャップがマイナスとなる。
+この丸めの方向は
+
+自分のスキル9.8、対象スキルキャップ10の場合、-1となる。
+また自分のスキル9.0、対象スキルキャップ10の場合-1
+
+ようするに、Rのfloorで丸めている（ここは、後で検討が必要なところかも）
+
+
+一部抜粋で表を見る
+
+```{r}
+
+res.factor <- factor(c("false", "success"), levels=c("false", "success"))
+
+synth.table %>%
+  filter(skill.gap >= -6 &skill.gap <=2) %>%
+  mutate(result=res.factor[result+1]) %>%
+  group_by(skill.rank=floor(skill.gap), result) %>%
+  summarise(count=n()) %>%
+  tidyr::spread(., key=result, count)
+```
+
+
+```{r}
+synth.table %>%
+  mutate(result=res.factor[result+1]) %>%
+  group_by(skill.rank=floor(skill.gap), result) %>%
+  ggplot(aes(x=skill.rank, fill=result)) +
+  geom_bar() +
+  labs(
+    x="スキル差ランク",
+    y="合成回数",
+    title="スキル差ランク別合成成否",
+    fill="合成結果"
+  )
+```
+
+```{r}
+synth.table %>%
+  filter(skill.gap >= -1 &skill.gap <=8) %>%
+  mutate(result=res.factor[result+1]) %>%
+  group_by(skill.rank=floor(skill.gap), result) %>%
+  summarise(count=n()) %>%
+  tidyr::spread(., key=result, count)
+```
+
+```{r}
+ggplot(data.frame(x=c(0.7,1)), aes(x=x)) +
+  stat_function(
+    fun=dbeta,
+    args=list(
+      shape1=36,
+      shape2=3
+    ),
+    color="blue"
+  ) +
+stat_function(
+    fun=dbeta,
+    args=list(
+      shape1=75,
+      shape2=2
+    ),
+    color="red"
+  ) +
+stat_function(
+    fun=dbeta,
+    args=list(
+      shape1=57,
+      shape2=4
+    )
+  )
+```
+

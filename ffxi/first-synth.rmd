@@ -76,7 +76,7 @@ synth.table %>%
 
 srをfactorにしてグラフを書いてみよう
 
-```{r}
+```{r, echo=FALSE}
 synth.table %>%
   mutate(sr=floor(skill.gap)) %>%
   ggplot(aes(x=sr, fill=as.factor(result))) +
@@ -88,6 +88,19 @@ synth.table %>%
     title="合成結果一覧"
   )
 ```
+このグラフは、横軸にSkill Gap（自分のスキルと、合成をしようとしているもののスキル差）、縦軸に
+合成を行った回数を示している。
+resultにある0は合成失敗、1は合成の成功を示している。
+
+このグラフを示すのは、それぞれの「割合」がどれだけ統計的な「重み」を持っているかを
+なんとなく感じてほしいからである。
+
+試行回数がある程度以上になれば、このよう表示はあまり必要なくなってくる。
+
+##　合成の成功率のグラフ
+
+
+
 ```{r}
 synth.table %>%
   mutate(sr=floor(skill.gap)) %>%
@@ -95,9 +108,37 @@ synth.table %>%
   summarise(success=sum(result), try=n()) %>%
   mutate(prb=round(success/try, 3)) %>%
   ggplot(aes(x=sr,y=prb)) +
-  geom_bar(stat="identity", fill="cyan4")
+  geom_bar(stat="identity", fill="cyan4") +
+  labs(
+    x="Skill Gap",
+    y="合成成功率",
+    title="合成の成功率"
+  )
 ```
 
+### 合成成功率について
+
+まず、Skill Gapが0以上のときに、合成成功率があるあたいになる（キャップする）ということにかんしては、あまりもんだがなさそうである。
+
+```{r}
+synth.table %>%
+  filter(skill.gap >=0) %>%
+  group_by(gap=as.factor(floor(skill.gap))) %>%
+  summarise(suc=sum(result), n=n(),p=sum(result)/n()) %>%
+  mutate(bu=round(p*256))
+```
+
+もう一つの具切りとして、-2から0という範囲があるかもしれないという話。
+
+
+```{r}
+
+synth.table %>%
+  filter(skill.gap < 0 & skill.gap >= -5) %>%
+group_by(gap=as.factor(floor(skill.gap))) %>%
+  summarise(suc=sum(result), n=n(), p=suc/n)
+
+```
 
 
 ここで、まずは合成成功率を分けるために、スキルギャップをランク分けする関数をつくる。
